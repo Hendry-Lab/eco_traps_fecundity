@@ -1,0 +1,45 @@
+---
+title: "Fecundity Assay Practice"
+output: html_document
+date: "2025-07-11"
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Goals
+
+Visually represent aphid mortality and fecundity
+
+# Load Libraries
+
+```{r load-libraries}
+pacman::p_load(readxl, ggplot2, dplyr, tidyr, tidyverse, devtools, install=FALSE)
+```
+
+# Load Data
+
+```{r load-data}
+aphid_count <- read_excel("data/fecundity_assay_count.xlsx")
+## filter for block 2 only 
+aphid_block2 <- aphid_count %>%
+  filter(block=="2")
+```
+
+# Calculations
+Calculating how many aphids are in each group as a new data frame
+```{r death_count}
+aphids_alive_r1_summary <- aphid_block2 %>%
+  mutate(
+    nymphs_r1 = as.numeric(nymphs_r1),
+    alate_alive_r1 = ifelse(alate_alive_r1 == "Yes", 1, 0),
+    aphids_alive_r1 = nymphs_r1 + alate_alive_r1
+  ) %>%
+  group_by(treatment) %>%
+  summarise(total_aphids_alive_r1 = sum(aphids_alive_r1, na.rm = TRUE))
+```
+
+
