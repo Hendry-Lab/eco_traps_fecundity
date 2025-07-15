@@ -17,7 +17,7 @@ Visually represent aphid mortality and fecundity
 # Load Libraries
 
 ```{r load-libraries}
-pacman::p_load(readxl, ggplot2, dplyr, tidyr, tidyverse, devtools, install=FALSE)
+pacman::p_load(readxl, ggplot2, dplyr, tidyr, tidyverse, devtools, scales, install=FALSE)
 ```
 
 # Load Data
@@ -42,4 +42,100 @@ aphids_alive_r1_summary <- aphid_block2 %>%
   summarise(total_aphids_alive_r1 = sum(aphids_alive_r1, na.rm = TRUE))
 ```
 
+# Filter for block 2 and treatments of interest
+```{r filter}
+aphid_block2 <- aphid_count %>%
+  filter(block == "2")
 
+aphid_survival <- aphid_block2 %>%
+  filter(treatment %in% c("220", "MgCl2")) %>%
+  mutate(
+    survival_status = case_when(
+      alate_alive_r1 == "Yes" ~ "Alive",
+      alate_alive_r1 == "No" ~ "Dead",
+      TRUE ~ NA_character_
+    )
+  ) %>%
+  filter(!is.na(survival_status))
+```
+
+# Summarize counts and calculate % alive
+```{r summarize}
+aphid_survival_summary <- aphid_survival %>%
+  group_by(treatment, survival_status) %>%
+  summarise(count = n(), .groups = "drop") %>%
+  group_by(treatment) %>%
+  mutate(percentage = count / sum(count) * 100)
+```
+
+# Filter only alive aphids for the plot
+```{r filter_alive}
+aphid_alive_summary <- aphid_survival_summary %>%
+  filter(survival_status == "Alive")
+```
+
+# Plot survival
+```{r plot}
+ggplot(aphid_alive_summary, aes(x = treatment, y = percentage, fill = treatment)) +
+  geom_col() +
+  labs(
+    title = "Aphid Survival - Block 2 - Round 1",
+    x = "Treatment", y = "Percentage Alive"
+  ) +
+  scale_y_continuous(
+    limits = c(0, 100),
+    labels = percent_format(scale = 1),
+    expand = c(0, 0)
+  ) +
+  scale_fill_manual(values = c("220" = "darkgreen", "MgCl2" = "darkred")) +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+# Reshape data: gather r1 and r2 survival into long format
+```{r reshape}
+aphid_long <- aphid_block2 %>%
+  pivot_longer(
+    cols = c(alate_alive_r1, alate_alive_r2),
+    names_to = "round",
+    values_to = "survival"
+  ) %>%
+  mutate(
+    round = ifelse(round == "alate_alive_r1", "Round 1", "Round 2"),
+    survival_status = case_when(
+      survival == "Yes" ~ "Alive",
+      survival == "No" ~ "Dead",
+      TRUE ~ NA_character_
+    )
+  ) %>%
+  filter(!is.na(survival_status))
+```
+
+# Summarize percent survival per treatment and round
+```{r percent_survival_b2}
+aphid_survival_summary <- aphid_long %>%
+  group_by(treatment, round, survival_status) %>%
+  summarise(count = n(), .groups = "drop") %>%
+  group_by(treatment, round) %>%
+  mutate(percentage = count / sum(count) * 100)
+aphid_alive_summary <- aphid_survival_summary %>%
+  filter(survival_status == "Alive")
+```
+
+# Plot survival across both rounds
+```{r plot_both_rounds}
+ggplot(aphid_alive_summary, aes(x = treatment, y = percentage, fill = treatment)) +
+  geom_col(position = "dodge") +
+  facet_wrap(~round) +
+  labs(
+    title = "Percentage of Surviving Aphids by Treatment (Block 2)",
+    x = "Treatment", y = "Percentage Alive"
+  ) +
+  scale_y_continuous(
+    limits = c(0, 100),
+    labels = percent_format(scale = 1),
+    expand = c(0, 0)
+  ) +
+  scale_fill_manual(values = c("220" = "#005200", "MgCl2" = "#602")) +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5))
+```
