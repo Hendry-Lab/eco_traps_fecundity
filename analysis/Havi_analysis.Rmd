@@ -16,7 +16,7 @@ editor_options:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, tidy.opts = list, tidy = TRUE, fig.align = "center", # Always relative to the document directory
-                      fig.path = "../figures", # Send any figures to this folder
+                      fig.path = "../figures/", # Send any figures to this folder
                       dev = "pdf",  # Export figures as PDF
                       width = 1,
                       height = 2,
