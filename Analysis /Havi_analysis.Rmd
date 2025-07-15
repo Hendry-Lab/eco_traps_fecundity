@@ -1,0 +1,129 @@
+---
+title: "Havi Fecundity Analysis"
+output:
+  pdf_document:
+    latex_engine: xelatex
+    toc: true
+  html_document:
+    toc: true
+    toc_float: true
+  word_document:
+    toc: true
+    keep_md: true
+editor_options:
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, tidy.opts = list, tidy = TRUE, fig.align = "center", # Always relative to the document directory
+                      fig.path = "../figures", # Send any figures to this folder
+                      dev = "pdf",  # Export figures as PDF
+                      width = 1,
+                      height = 2,
+                      dpi = 350)  # Set the resolution to 300 dots per inch (dpi)
+```
+
+# Load Libraries
+
+```{r load-packages}
+pacman::p_load(ggplot2, readxl, ggbeeswarm, readr, dplyr, tidyr, tidyverse, devtools, cowplot, knitr, emmeans, ggpmisc, lme4, lmerTest, RColorBrewer, viridis, install = FALSE)
+```
+
+# Load Data
+
+```{r load-data}
+aphid_count <- read_excel("data/fecundity_assay_count.xlsx") %>%
+  filter(alate_alive_r1!="control") %>%
+  mutate(
+    nymphs_r1 = as.numeric(nymphs_r1),
+    nymphs_r2 = as.numeric(nymphs_r2)
+  )
+```
+
+```{r tidy}
+# === Pivot to long format ===
+aphid_long <- aphid_count %>%
+  pivot_longer(
+    cols = c(starts_with("nymphs_r"), starts_with("alate_alive_r")),
+    names_to = c(".value", "round"),
+    names_pattern = "(.*)_r(\\d)"
+  )
+```
+
+# Calculations
+Calculating how many aphids are in each group as a new data frame
+
+## survival
+```{r death_count}
+# === Survival summary ===
+survival_summary <- aphid_long %>%
+  group_by(treatment, block, round) %>%
+  summarise(
+    alive_n = sum(alate_alive == "Yes", na.rm = TRUE),
+    dead_n  = sum(alate_alive == "No",  na.rm = TRUE),
+    total   = alive_n + dead_n,
+    survival_pct = 100 * alive_n / total,
+    .groups = "drop"
+  )
+
+# Optional: Treatment-level survival averages
+survival_by_treatment <- survival_summary %>%
+  group_by(treatment, round) %>%
+  summarise(
+    mean_survival = mean(survival_pct),
+    se_survival   = sd(survival_pct) / sqrt(n()),
+    .groups = "drop"
+  )
+```
+
+## fecundity
+```{r fecundity-calc}
+fecundity_by_block <- aphid_long %>%
+  filter(alate_alive == "Yes") %>%
+  group_by(treatment, block, round) %>%
+  summarise(
+    mean_fecundity = mean(nymphs, na.rm = TRUE),
+    sd_fecundity   = sd(nymphs, na.rm = TRUE),
+    n              = n(),
+    .groups = "drop"
+  )
+
+fecundity_by_treatment <- fecundity_by_block %>%
+  group_by(treatment, round) %>%
+  summarise(
+    mean_nymphs = mean(mean_fecundity),
+    se_nymphs   = sd(mean_fecundity) / sqrt(n()),
+    .groups = "drop"
+  )
+```
+
+## Plot aphid survival
+
+```{r plot-aphid-survival-r1}
+survival_summary_block2 <- survival_summary %>% filter(block==2)
+ggplot(data = survival_summary_block2, aes(x = interaction(treatment, round), y = survival_pct, fill = treatment)) +
+  geom_col(color = "black", size = 0.3) +
+  labs(x = "Treatment", y = "Alate Survival %", 
+       title = "Aphid Survival on #220 or buffer plants - Block 2") +
+  scale_fill_manual(values = c("#546214", "#844e27")) +
+  ylim(0, 100) +
+  theme_minimal() +
+  theme(legend.position = "right", panel.background = element_rect(fill = "white"), panel.grid = element_blank(),
+  panel.grid.minor.x = element_blank(), plot.title=element_text(hjust = 0.5))
+```
+
+## Plot aphid fecundity
+
+```{r plot-aphid-fecundity-r1}
+fecundity_by_block_block2 <- fecundity_by_block %>% filter(block==2)
+ggplot(data = fecundity_by_block_block2, aes(x = interaction(treatment, round), y = mean_fecundity, fill = treatment)) +
+  geom_col(color = "black", size = 0.3) +
+  geom_errorbar(aes(ymin = mean_fecundity - sd_fecundity, ymax = mean_fecundity + sd_fecundity), width = 0.2, color = "black", position = position_dodge(width = 0.8)) +
+  labs(x = "Treatment", y = "Nymphs per Alate", 
+       title = "Aphid Fecundity on #220 or buffer plants - Block 2") +
+  scale_fill_manual(values = c("#546214", "#844e27")) +
+  ylim(0, 50) +
+  theme_minimal() +
+  theme(legend.position = "right", panel.background = element_rect(fill = "white"), panel.grid = element_blank(),
+  panel.grid.minor.x = element_blank(), plot.title=element_text(hjust = 0.5))
+```
