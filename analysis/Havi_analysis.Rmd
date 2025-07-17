@@ -34,10 +34,17 @@ pacman::p_load(ggplot2, readxl, ggbeeswarm, readr, dplyr, tidyr, tidyverse, devt
 ```{r load-data}
 aphid_count <- read_excel("data/fecundity_assay_count.xlsx") %>%
   filter(alate_alive_r1!="control") %>%
+  filter(block!=1) %>%
   mutate(
     nymphs_r1 = as.numeric(nymphs_r1),
     nymphs_r2 = as.numeric(nymphs_r2)
   )
+
+# filter by block
+aphid_count_block2 <- aphid_count %>%
+  filter(block == 2) 
+aphid_count_block3 <- aphid_count %>%
+  filter(block == 3) 
 ```
 
 ```{r tidy}
@@ -55,52 +62,71 @@ Calculating how many aphids are in each group as a new data frame
 
 ## survival
 ```{r death_count}
-# === Survival summary ===
+# === Survival summary by block and round ===
 survival_summary <- aphid_long %>%
-  group_by(treatment, block, round) %>%
+  group_by(treatment, block, round) %>%  # Group data by treatment condition, experimental block, and round
   summarise(
+    # Count how many alates were alive in each group (handling NAs just in case)
     alive_n = sum(alate_alive == "Yes", na.rm = TRUE),
+    # Count how many alates were dead in each group
     dead_n  = sum(alate_alive == "No",  na.rm = TRUE),
+    # Compute total number of alates observed (alive + dead)
     total   = alive_n + dead_n,
+    # Calculate percent survival per block per round (0–100%)
     survival_pct = 100 * alive_n / total,
+    # Drop grouping structure after summarising (avoids nested data frames in later steps)
     .groups = "drop"
   )
 
-# Optional: Treatment-level survival averages
-survival_by_treatment <- survival_summary %>%
-  group_by(treatment, round) %>%
+# === Average survival across blocks ===
+survival_summary_avg <- survival_summary %>%
+  group_by(treatment, round) %>%  # Now group just by treatment and round (collapsed across blocks)
   summarise(
-    mean_survival = mean(survival_pct),
-    se_survival   = sd(survival_pct) / sqrt(n()),
+    # Compute the mean survival percentage across all blocks in each treatment/round
+    mean_survival = mean(survival_pct, na.rm = TRUE),
+    # Calculate standard error: standard deviation divided by square root of the number of blocks
+    se_survival   = sd(survival_pct, na.rm = TRUE) / sqrt(n()),
+    # Drop grouping again for a clean summary table
     .groups = "drop"
   )
 ```
 
 ## fecundity
 ```{r fecundity-calc}
+# === Step 1: Calculate fecundity summary by block and round ===
 fecundity_by_block <- aphid_long %>%
-  filter(alate_alive == "Yes") %>%
+  # Group data by treatment condition, block (replicate), and round (e.g. R1 vs R2)
   group_by(treatment, block, round) %>%
+  # Summarise the fecundity statistics within each block × treatment × round group
   summarise(
-    mean_fecundity = mean(nymphs, na.rm = TRUE),
-    sd_fecundity   = sd(nymphs, na.rm = TRUE),
-    n              = n(),
-    .groups = "drop"
+    mean_fecundity = mean(nymphs, na.rm = TRUE), # Mean number of nymphs per alate
+    se_nymphs = sd(mean_fecundity, na.rm = TRUE) / sqrt(n()), # Standard error = SD / sqrt(n blocks)
+    
+    .groups = "drop" # Ungroup to simplify downstream summarization
   )
 
+# === Step 2: Aggregate fecundity across blocks for each treatment and round ===
 fecundity_by_treatment <- fecundity_by_block %>%
+  # Now group by treatment and round only (collapse across blocks)
   group_by(treatment, round) %>%
+  # Summarise the average of block means and calculate standard error
   summarise(
-    mean_nymphs = mean(mean_fecundity),
-    se_nymphs   = sd(mean_fecundity) / sqrt(n()),
-    .groups = "drop"
+    mean_nymphs = mean(mean_fecundity, na.rm = TRUE), # Mean of block-level means
+    se_nymphs = sd(mean_fecundity, na.rm = TRUE) / sqrt(n()), # Standard error = SD / sqrt(n blocks)
+    .groups = "drop" # Drop grouping for a flat summary table
   )
 ```
+
+# Plot
 
 ## Plot aphid survival
 
 ```{r plot-aphid-survival-r1}
+# Filter by block
 survival_summary_block2 <- survival_summary %>% filter(block==2)
+survival_summary_block3 <- survival_summary %>% filter(block==3)
+
+# === Block 2 ===
 ggplot(data = survival_summary_block2, aes(x = interaction(treatment, round), y = survival_pct, fill = treatment)) +
   geom_col(color = "black", size = 0.3) +
   labs(x = "Treatment", y = "Alate Survival %", 
@@ -110,11 +136,41 @@ ggplot(data = survival_summary_block2, aes(x = interaction(treatment, round), y 
   theme_minimal() +
   theme(legend.position = "right", panel.background = element_rect(fill = "white"), panel.grid = element_blank(),
   panel.grid.minor.x = element_blank(), plot.title=element_text(hjust = 0.5))
+
+# === Block 3 ===
+ggplot(data = survival_summary_block3, aes(x = interaction(treatment, round), y = survival_pct, fill = treatment)) +
+  geom_col(color = "black", size = 0.3) +
+  labs(x = "Treatment", y = "Alate Survival %", 
+       title = "Aphid Survival on #220 or buffer plants - Block 3") +
+  scale_fill_manual(values = c("#546214", "#844e27")) +
+  ylim(0, 100) +
+  theme_minimal() +
+  theme(legend.position = "right", panel.background = element_rect(fill = "white"), panel.grid = element_blank(),
+  panel.grid.minor.x = element_blank(), plot.title=element_text(hjust = 0.5))
+
+# === All Blocks ===
+ggplot(survival_summary_avg, aes(x = interaction(treatment, round), y = mean_survival, fill = treatment)) +
+  geom_col(color = "black", size = 0.3, position = position_dodge(width = 0.9)) +
+  geom_errorbar(aes(ymin = mean_survival - se_survival, ymax = mean_survival + se_survival),
+                width = 0.2, color = "black", position = position_dodge(width = 0.9)) +
+  labs(x = "Treatment × Round", y = "Mean Alate Survival (%)", 
+       title = "Mean Aphid Survival Across Blocks") +
+  scale_fill_manual(values = c("#546214", "#844e27")) +
+  ylim(0, 100) +
+  theme_minimal() +
+  theme(
+    legend.position = "right",
+    panel.background = element_rect(fill = "white"),
+    panel.grid = element_blank(),
+    plot.title = element_text(hjust = 0.5)
+  )
 ```
 
 ## Plot aphid fecundity
+### Column Plots
 
-```{r plot-aphid-fecundity-r1}
+```{r col-plot-aphid-fecundity}
+# === Block 2 ===
 fecundity_by_block_block2 <- fecundity_by_block %>% filter(block==2)
 ggplot(data = fecundity_by_block_block2, aes(x = interaction(treatment, round), y = mean_fecundity, fill = treatment)) +
   geom_col(color = "black", size = 0.3) +
@@ -126,4 +182,103 @@ ggplot(data = fecundity_by_block_block2, aes(x = interaction(treatment, round), 
   theme_minimal() +
   theme(legend.position = "right", panel.background = element_rect(fill = "white"), panel.grid = element_blank(),
   panel.grid.minor.x = element_blank(), plot.title=element_text(hjust = 0.5))
+```
+
+```{r violin-plot-aphid-fecundity}
+# === Block 2 ===
+aphid_count_block2_r1 <- aphid_count %>%
+  filter(block == 2)
+
+ggplot(aphid_count_block2_r1, aes(x = treatment, y = nymphs_r1, fill = treatment)) +
+  geom_violin(trim = FALSE, alpha = 0.6, color = "black") +
+  geom_boxplot(width = 0.15, outlier.shape = NA, color = "black", position = position_dodge(width = 0.75)) +
+  geom_jitter(aes(fill = alate_alive_r1),  # Color by survival status
+              width = 0.15, shape = 21, size = 2.5, color = "black", alpha = 0.8) +
+  scale_fill_manual(
+    values = c("Yes" = "#2c7bb6", "No" = "#d7191c"),
+    name = "Alate Alive?",
+    guide = guide_legend(override.aes = list(shape = 21))
+  ) +
+  labs(x = "Treatment", y = "Nymphs per Alate (Round 1)", 
+       title = "Aphid Fecundity by Treatment and Survival (Block 2, R1)") +
+  ylim(0, NA) +
+  theme_minimal() +
+  theme(
+    panel.grid = element_blank(),
+    plot.title = element_text(hjust = 0.5),
+    legend.position = "right"
+  )
+```
+
+# Statistics
+
+## alate death
+
+```{r death-stats}
+# filter by round
+surv_r1 <- survival_summary_block2 %>% filter(round == 1)
+surv_r2 <- survival_summary_block2 %>% filter(round == 2)
+
+# === Round 1 ===
+
+ch_r1 <- glm(cbind(alive_n, dead_n) ~ treatment,
+             family = binomial,
+             data = surv_r1)
+
+summary(ch_r1)
+
+# Pairwise comparisons (log-odds, back-transformed to probability)
+emmeans(ch_r1, ~ treatment, type = "response")
+
+# === Round 2 ===
+
+ch_r2 <- glm(cbind(alive_n, dead_n) ~ treatment,
+             family = binomial,
+             data = surv_r2)
+
+summary(ch_r2)
+
+emmeans(ch_r2, ~ treatment, type = "response")
+```
+
+## Stats on alate fecundity
+
+```{r babies-stats}
+# filter by round
+aphid_count_block2_r1_alive_only <- aphid_count %>%
+  filter(block == 2, alate_alive_r1 == "Yes")  # Only include live alates in R1
+aphid_count_block2_r2_alive_only <- aphid_count %>%
+  filter(block == 2, alate_alive_r2 == "Yes")  # Only include live alates in R2
+
+# === Round 1: Alive only ===
+
+ch_fec_r1_alive <- lm(nymphs_r1 ~ treatment, data = aphid_count_block2_r1_alive_only)
+
+summary(ch_fec_r1_alive)
+
+emmeans(ch_fec_r1_alive, ~ treatment)
+
+# === Round 1: Alive and dead ===
+
+ch_fec_r1 <- lm(nymphs_r1 ~ treatment, data = aphid_count_block2)
+
+summary(ch_fec_r1)
+
+emmeans(ch_fec_r1, ~ treatment)
+
+# === Round 2: Alive only ===
+
+ch_fec_r2_alive <- lm(nymphs_r2 ~ treatment, data = aphid_count_block2_r2_alive_only)
+
+summary(ch_fec_r2_alive)
+
+emmeans(ch_fec_r2_alive, ~ treatment)
+
+# === Round 2: Alive and dead ===
+
+ch_fec_r2 <- lm(nymphs_r2 ~ treatment, data = aphid_count_block2)
+
+summary(ch_fec_r2)
+
+emmeans(ch_fec_r2, ~ treatment)
 ```
