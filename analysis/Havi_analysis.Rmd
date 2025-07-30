@@ -26,7 +26,7 @@ knitr::opts_chunk$set(echo = TRUE, tidy.opts = list, tidy = TRUE, fig.align = "c
 # Load Libraries
 
 ```{r load-packages}
-pacman::p_load(ggplot2, readxl, ggbeeswarm, readr, dplyr, formatR, tidyr, tidyverse, devtools, cowplot, knitr, emmeans, ggpmisc, lme4, lmerTest, RColorBrewer, viridis, install = FALSE)
+pacman::p_load(ggdark, ggplot2, readxl, ggbeeswarm, readr, dplyr, formatR, tidyr, tidyverse, devtools, cowplot, knitr, emmeans, ggpmisc, lme4, lmerTest, RColorBrewer, viridis, install = FALSE)
 ```
 
 # Load Data
@@ -45,19 +45,16 @@ aphid_count_block2 <- aphid_count %>%
   filter(block == 2) 
 aphid_count_block3 <- aphid_count %>%
   filter(block == 3) 
-aphid_count_block4 <- aphid_count %>%
-  filter(block == 4) 
 ```
 
 ```{r tidy}
-# === Pivot to long format and remove alates with 0 babies ===
+# === Pivot to long format ===
 aphid_long <- aphid_count %>%
   pivot_longer(
     cols = c(starts_with("nymphs_r"), starts_with("alate_alive_r")),
     names_to = c(".value", "round"),
     names_pattern = "(.*)_r(\\d)"
-  ) %>%
-    filter(nymphs > 0) 
+  )
 ```
 
 # Survival
@@ -97,6 +94,21 @@ survival_summary_avg <- survival_summary %>%
 ## Survival Plots
 
 ```{r plot-aphid-survival-r1}
+# Filter by block
+survival_summary_no_b4 <- survival_summary %>% filter(block!=4)
+
+# === All Blocks ===
+ggplot(data = survival_summary_no_b4, aes(x = interaction(treatment, round), y = survival_pct, fill = treatment)) +
+  geom_col(color = "black", size = 0.3) +
+  facet_wrap(~block) +
+  labs(x = "Treatment", y = "Alate Survival %", 
+       title = "Aphid Survival on #220 or buffer plants - Block 2") +
+  scale_fill_manual(values = c("#640f0f", "#141e67")) +
+  ylim(0, 100) +
+  theme_minimal() +
+  theme(legend.position = "right", panel.background = element_rect(fill = "white"), panel.grid = element_blank(),
+  panel.grid.minor.x = element_blank(), plot.title=element_text(hjust = 0.5))
+
 # === All Blocks ===
 ggplot(survival_summary_avg, aes(x = interaction(treatment, round), y = mean_survival, fill = treatment)) +
   geom_col(color = "black", size = 0.3, position = position_dodge(width = 0.9)) +
@@ -104,7 +116,34 @@ ggplot(survival_summary_avg, aes(x = interaction(treatment, round), y = mean_sur
                 width = 0.2, color = "black", position = position_dodge(width = 0.9)) +
   labs(x = "Treatment × Round", y = "Mean Alate Survival (%)", 
        title = "Mean Aphid Survival Across Blocks") +
-  scale_fill_manual(values = c("#546214", "#844e27")) +
+  scale_fill_manual(values = c("#640f0f", "#131e67")) +
+  ylim(0, 100) +
+  theme_minimal() +
+  theme(
+    legend.position = "right",
+    panel.background = element_rect(fill = "white"),
+    panel.grid = element_blank(),
+    plot.title = element_text(hjust = 0.5)
+  )
+
+# ===survival bar chart average===
+# Assuming survival_summary is grouped by treatment, round, and block
+survival_summary_avg <- survival_summary %>%
+  group_by(treatment, round) %>%
+  summarise(
+    mean_survival = mean(mean_survival, na.rm = TRUE),
+    se_survival = sd(mean_survival, na.rm = TRUE) / sqrt(n()),
+    .groups = "drop"
+  )
+ggplot(survival_summary_avg, aes(x = interaction(treatment, round), y = mean_survival, fill = treatment)) +
+  geom_col(color = "black", size = 0.3, position = position_dodge(width = 0.9)) +
+  geom_errorbar(aes(ymin = mean_survival - se_survival, ymax = mean_survival + se_survival),
+                width = 0.2, color = "black", position = position_dodge(width = 0.9)) +
+  labs(
+    x = "Treatment × Round",
+    y = "Mean Alate Survival (%)", 
+  ) +
+  scale_fill_manual(values = c("#546214", "#563517")) +
   ylim(0, 100) +
   theme_minimal() +
   theme(
@@ -146,17 +185,51 @@ fecundity_by_treatment <- aphid_long %>%
 ### Fecundity Plots
 
 ```{r col-plot-aphid-fecundity}
-# Line plot
-ggplot(data = fecundity_by_treatment, aes(x = round, y = mean_nymphs, group = treatment, color = treatment)) +
-  geom_line(size = 1) +
-  geom_point(size = 3) + 
-  geom_errorbar(aes(ymin = mean_nymphs - se_nymphs, ymax = mean_nymphs + se_nymphs), width = 0.2) +
+# by block
+ggplot(data = fecundity_by_block, aes(x = interaction(treatment, round), y = mean_fecundity, fill = treatment)) +
+  geom_col(size = 0.3) +
+  facet_wrap(~block) +
+  geom_errorbar(
+    aes(ymin = mean_fecundity - se_nymphs, ymax = mean_fecundity + se_nymphs),
+    width = 0.2,
+    position = position_dodge(width = 0.8)
+  ) +
+  labs(
+    x = "Treatment",
+    y = "Nymphs per Alate",
+    title = "Aphid Fecundity on #220 or buffer plants - Block 2"
+  ) +
+  scale_fill_manual(values = c("#546214", "#844e27")) +
+  ylim(0, 30) +
+  dark_theme_minimal() +  # ✅ updated here
+  theme(
+    legend.position = "right",
+    panel.grid = element_blank(),
+    panel.grid.minor.x = element_blank(),
+    plot.title = element_text(hjust = 0.5)
+  )
+
+# === both blocks ====
+# Filter out block 4
+fecundity_filtered <- fecundity_by_block %>%
+  filter(block != 4)
+
+# Plot
+ggplot(data = fecundity_filtered, 
+       aes(x = interaction(treatment, round), y = mean_fecundity, fill = treatment)) +
+  geom_col(color = "black", size = 0.3) +
+  geom_errorbar(
+    aes(ymin = mean_fecundity - se_nymphs, ymax = mean_fecundity + se_nymphs),
+    width = 0.2,
+    position = position_dodge(width = 0.8)
+  ) +
+  facet_wrap(~block) +
   labs(
     x = "Treatment × Round",
     y = "Nymphs per Alate",
     title = "Aphid Fecundity by Treatment and Round (Blocks 1–3)"
   ) +
-  scale_color_manual(values = c("#9eb724", "#563517")) +
+  scale_fill_manual(values = c("#546214", "#844e27")) +
   ylim(0, 30) +
   theme_minimal() +
   theme(
@@ -166,8 +239,68 @@ ggplot(data = fecundity_by_treatment, aes(x = round, y = mean_nymphs, group = tr
     plot.title = element_text(hjust = 0.5)
   )
 
+# ===line graph=== 
+# Step 1: Filter out block 4 and any observations with 0 nymphs
+fecundity_filtered <- fecundity_by_block %>%
+  filter(block != 4, mean_fecundity > 0)
+
+# Step 2: Summarize by treatment and round (combine across blocks)
+fecundity_summary <- fecundity_filtered %>%
+  group_by(treatment, round) %>%
+  summarise(
+    mean_fecundity = mean(mean_fecundity, na.rm = TRUE),
+    se_nymphs = sd(mean_fecundity, na.rm = TRUE) / sqrt(n()),
+    .groups = "drop"
+  )
+
+# Step 3: Plot as line graph
+# Step 1: Calculate block-level means for each treatment × round × block
+block_means <- aphid_long %>%
+  filter(block %in% c(2, 3), nymphs > 0) %>%
+  group_by(treatment, round, block) %>%
+  summarise(
+    mean_nymphs = mean(nymphs, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Step 2: Average across blocks to get one value per treatment × round
+fecundity_summary <- block_means %>%
+  group_by(treatment, round) %>%
+  summarise(
+    mean_fecundity = mean(mean_nymphs),                          # Mean of block means
+    se_fecundity = sd(mean_nymphs) / sqrt(n()),                  # SE across blocks
+    .groups = "drop"
+  )
+
+# Step 3: Plot as line graph with error bars
+ggplot(fecundity_summary, aes(x = round, y = mean_fecundity, color = treatment, group = treatment)) +
+  geom_line(size = 1.2) +
+  geom_point(size = 3) +
+  geom_errorbar(aes(
+    ymin = mean_fecundity - se_fecundity,
+    ymax = mean_fecundity + se_fecundity
+  ), width = 0.1) +
+  labs(
+    x = "Round",
+    y = "Mean Offspring per Alate",
+  
+  ) +
+  scale_color_manual(values = c("#546214", "#563517")) +
+  ylim(0, 30) +
+  theme_minimal() +
+  theme(
+    legend.position = "right",
+    panel.grid = element_blank(),
+    plot.title = element_text(hjust = 0.5)
+  )
+
+# ===box plot===
+# Filter individual-level data: remove block 4 and zero nymphs
+aphid_individual_filtered <- aphid_long %>%
+  filter(block != 4, nymphs > 0)
+
 # Plot: vertical boxplot with jitter
-ggplot(aphid_long, aes(x = interaction(treatment, round), y = nymphs, fill = treatment)) +
+ggplot(aphid_individual_filtered, aes(x = interaction(treatment, round), y = nymphs, fill = treatment)) +
   geom_boxplot(outlier.shape = NA, width = 0.5, alpha = 0.7, color = "black") +
   geom_jitter(width = 0.2, size = 2, alpha = 0.7, shape = 21, color = "black") +
   labs(
@@ -175,7 +308,7 @@ ggplot(aphid_long, aes(x = interaction(treatment, round), y = nymphs, fill = tre
     x = "Treatment × Round",
     y = "Nymphs per Alate"
   ) +
-  scale_fill_manual(values = c("#546214", "#844e27")) +
+  scale_fill_manual(values = c("#546214", "#563517")) +
   ylim(0, NA) +
   theme_minimal() +
   theme(
@@ -183,6 +316,7 @@ ggplot(aphid_long, aes(x = interaction(treatment, round), y = nymphs, fill = tre
     panel.grid = element_blank(),
     plot.title = element_text(hjust = 0.5)
   )
+
 ```
 
 # Statistics
@@ -221,16 +355,19 @@ emmeans(ch_r2, ~ treatment, type = "response")
 ```{r babies-stats}
 # filter by round
 aphid_count_r1_alive_only <- aphid_count %>%
-  filter(alate_alive_r1 == "Yes")  # Only include live alates in R1
+  filter(block != 4, alate_alive_r1 == "Yes")  # Only include live alates in R1
 aphid_count_r2_alive_only <- aphid_count %>%
-  filter(alate_alive_r2 == "Yes")  # Only include live alates in R2
-aphid_count_alive_and_dead <- aphid_count
+  filter(block != 4, alate_alive_r2 == "Yes")  # Only include live alates in R2
+
+# Exclude round 4
+aphid_count_alive_and_dead <- aphid_count %>%
+  filter(block != 4)  
 
 # Only include aphids that had kids
 aphid_count_alive_and_dead_yes_nymphs_r1 <- aphid_count %>%
-  filter(nymphs_r1 != 0) 
+  filter(block != 4, nymphs_r1 != 0) 
 aphid_count_alive_and_dead_yes_nymphs_r2 <- aphid_count %>%
-  filter(nymphs_r2 != 0) 
+  filter(block != 4, nymphs_r2 != 0) 
 
 # === Round 1: Alive only ===
 
