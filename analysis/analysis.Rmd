@@ -26,7 +26,7 @@ knitr::opts_chunk$set(echo = TRUE, tidy.opts = list, tidy = TRUE, fig.align = "c
 # Load Libraries
 
 ```{r load-packages}
-pacman::p_load(ggplot2, readxl, ggbeeswarm, readr, dplyr, formatR, tidyr, tidyverse, devtools, cowplot, knitr, emmeans, ggpmisc, lme4, lmerTest, RColorBrewer, viridis, install = FALSE)
+pacman::p_load(ggplot2, readxl, ggbeeswarm, readr, dplyr, formatR, tidyr, tidyverse, devtools, cowplot, knitr, emmeans, ggpmisc, lme4, lmerTest, RColorBrewer, viridis, install = TRUE)
 ```
 
 # Load Data
@@ -167,7 +167,7 @@ ggplot(data = fecundity_by_treatment, aes(x = round, y = mean_nymphs, group = tr
   )
 
 # Plot: vertical boxplot with jitter
-ggplot(aphid_long, aes(x = interaction(treatment, round), y = nymphs, fill = treatment)) +
+ggplot(aphid_long, aes(x = interaction(treatment, round), y = nymphs, fill = alate_alive)) +
   geom_boxplot(outlier.shape = NA, width = 0.5, alpha = 0.7, color = "black") +
   geom_jitter(width = 0.2, size = 2, alpha = 0.7, shape = 21, color = "black") +
   labs(
@@ -175,11 +175,11 @@ ggplot(aphid_long, aes(x = interaction(treatment, round), y = nymphs, fill = tre
     x = "Treatment × Round",
     y = "Nymphs per Alate"
   ) +
-  scale_fill_manual(values = c("#546214", "#844e27")) +
+  #scale_fill_manual(values = c("#546214", "#844e27")) +
   ylim(0, NA) +
   theme_minimal() +
   theme(
-    legend.position = "none",
+    legend.position = "top",
     panel.grid = element_blank(),
     plot.title = element_text(hjust = 0.5)
   )
@@ -279,4 +279,42 @@ ch_fec_r1 <- lm(nymphs_r2 ~ treatment, data = aphid_count_alive_and_dead_yes_nym
 summary(ch_fec_r1)
 
 emmeans(ch_fec_r1, ~ treatment)
+
+#Stats Consulting
+library(lme4)
+library(lmerTest)
+#alive + dead 
+ch_fec <- lmer(nymphs ~ treatment*alate_alive*round+(1|`plant_#`:block)+(1|block), data = aphid_long)
+
+summary(ch_fec)
+#random effects represent what is influencing the data. Residual is the influence of extra stuff not included in block and plant number (influence of bacteria, ect..)
+#fixed effects: Intercept column shows the opposite of the reference point. TreatmentMgCl2 means we're looking at 220, alive means looking at dead, ect.. 
+#The estimate Std. is showing the change as a result of that one variable. -6.919 for MgCl2 means there is a -7 differecne in means as a result of treatment changing 
+#interactions show the additional difference as a result of the interaction. Treatment and survival should be -6.9 + 2.82, but the interaction value of 1.09 shows that you need to add an aditional 1.09 to account for the additional interaction changes. 
+#The p-values show the significance of the interactions between variables. Only treatment+round and survival+round have signficant interactions that are accounted for. 
+anova(ch_fec)
+emmeans(ch_fec, pairwise ~ treatment|alate_alive+round)
+emmeans(ch_fec, pairwise ~ alate_alive|treatment+round)
+#There is not much signficance to being alive until round 2 
+#assumptions of models: all linear, independent data points (they were not, this is why we used random effects), 
+#assuming error is normally distributed 
+hist(residuals(ch_fec))
+#long right tail, but otherwise normal residuals. Centered around 0 for the most part
+
+#assuming residuals are homoskedastic
+plot(predict(ch_fec), residuals(ch_fec)) #slightly problematic, outliers at the highest residuals and highest predictors.
+
+#refitting with log (going with log, it looks better)
+ch_fec_log <- lmer(log(nymphs) ~ treatment*alate_alive*round+(1|`plant_#`:block)+(1|block), data = aphid_long)
+hist(residuals(ch_fec_log))
+plot(predict(ch_fec_log), residuals(ch_fec_log)) 
+
+anova(ch_fec_log)
+emmeans(ch_fec_log, pairwise ~ treatment|alate_alive+round, type = "response") #type response is backtracking the response to unlog it
+#remake bar plot with log scale
+emmeans(ch_fec_log, pairwise ~ alate_alive|treatment+round, type= "response")
+emmeans(ch_fec_log, ~ alate_alive+treatment+round, type= "response") %>%
+  pairs(by=c("treatment", "round")) %>%
+  pairs(by=c("treatment"))
+#showing a significat difference in the effect of death between rounds 1 and 2 for 220, but not for MgCl2
 ```
